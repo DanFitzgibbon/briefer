@@ -9,7 +9,7 @@ import {
   BookOpenIcon,
 } from '@heroicons/react/20/solid'
 import { CopyToClipboard } from 'react-copy-to-clipboard'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as Y from 'yjs'
 import {
   type SQLBlock,
@@ -17,7 +17,6 @@ import {
   getSQLBlockExecStatus,
   execStatusIsDisabled,
   getSQLSource,
-  getSQLAISuggestions,
   isSQLBlockAIEditing,
   toggleSQLEditWithAIPromptOpen,
   requestSQLEditWithAI,
@@ -33,7 +32,6 @@ import {
   getSQLAttributes,
   createComponentState,
 } from '@briefer/editor'
-import { DiffEditor, Editor } from '@monaco-editor/react'
 import SQLResult from './SQLResult'
 import type {
   ApiDocument,
@@ -44,7 +42,6 @@ import DataframeNameInput from './DataframeNameInput'
 import HeaderSelect from '@/components/v2Editor/customBlocks/sql/HeaderSelect'
 import clsx from 'clsx'
 import { useEnvironmentStatus } from '@/hooks/useEnvironmentStatus'
-import useCodeEditor from '@/hooks/useV2CodeEditor'
 import {
   LoadingEnvText,
   LoadingQueryText,
@@ -55,7 +52,6 @@ import EditWithAIForm from '../../EditWithAIForm'
 import ApproveDiffButons from '../../ApproveDiffButtons'
 import { SQLExecTooltip } from '../../ExecTooltip'
 import LargeSpinner from '@/components/LargeSpinner'
-import { useMonacoContext } from '@/components/MonacoProvider'
 import { APIDataSources } from '@/hooks/useDatasources'
 import { useRouter } from 'next/router'
 import HiddenInPublishedButton from '../../HiddenInPublishedButton'
@@ -64,6 +60,7 @@ import { useWorkspaces } from '@/hooks/useWorkspaces'
 import useProperties from '@/hooks/useProperties'
 import { SaveReusableComponentButton } from '@/components/ReusableComponents'
 import { useReusableComponents } from '@/hooks/useReusableComponents'
+import { CodeEditor } from '../../CodeEditor'
 
 const NO_DS_TEXT = `-- No data sources connected. Please add one using the "data sources" menu on the bottom left
 -- Alternatively, you can upload files using the file upload block and query them using DuckDB as a data source.`
@@ -170,33 +167,12 @@ function SQLBlock(props: Props) {
     [components, componentId]
   )
 
-  const {
-    editor,
-    isEditorFocused,
-    onMount: onMountEditor,
-    onMountDiffEditor,
-    editorOptions,
-    diffEditorOptions,
-    focusEditor,
-    key: editorKey,
-    reLayout,
-    acceptDiffEditor,
-  } = useCodeEditor(
-    blockId,
-    getSQLSource(props.block),
-    getSQLAISuggestions(props.block),
-    onRun,
-    statusIsDisabled,
-    !props.isEditable || (dataSourceId === null && !isFileDataSource),
-    onToggleEditWithAIPromptOpen,
-    props.selectBelow,
-    props.insertBelow
-  )
+  const codeEditor = useRef<CodeEditor | null>(null)
 
   const onCloseEditWithAIPrompt = useCallback(() => {
     closeSQLEditWithAIPrompt(props.block, false)
-    focusEditor()
-  }, [props.block, focusEditor])
+    codeEditor.current?.focus()
+  }, [props.block, codeEditor])
 
   const onChangeDataSource = useCallback(
     (df: { value: string; type: DataSourceType | 'duckdb' }) => {
@@ -230,7 +206,7 @@ function SQLBlock(props: Props) {
     }
   }, [status, props.block, onRun])
 
-  const source = props.block.getAttribute('source')
+  const { source } = getSQLAttributes(props.block, props.blocks)
   const lastQuery = props.block.getAttribute('lastQuery')
   const lastQueryTime = props.block.getAttribute('lastQueryTime')
   const queryStatusText = useMemo(() => {
@@ -259,9 +235,10 @@ function SQLBlock(props: Props) {
   }, [props.block])
 
   const onAcceptAISuggestion = useCallback(() => {
-    acceptDiffEditor()
+    // TODO:
+    // acceptDiffEditor()
     props.block.setAttribute('aiSuggestions', null)
-  }, [props.block, acceptDiffEditor])
+  }, [props.block])
 
   const onRejectAISuggestion = useCallback(() => {
     props.block.setAttribute('aiSuggestions', null)
@@ -282,46 +259,11 @@ function SQLBlock(props: Props) {
 
   const isAIEditing = isSQLBlockAIEditing(props.block)
 
-  const [
-    ,
-    {
-      setModelDataSource,
-      removeModelDataSource: removeModelDataSourceStructure,
-    },
-  ] = useMonacoContext()
-
   useEffect(() => {
-    const model = editor?.getModel()
-    if (!model) {
-      return
+    if (props.isCursorWithin && props.isCursorInserting) {
+      codeEditor.current?.focus()
     }
-    const dataSource = props.dataSources.find(
-      (ds) => ds.config.data.id === dataSourceId
-    )
-    if (!dataSource) {
-      return
-    }
-
-    setModelDataSource(model.id, dataSource)
-
-    return () => {
-      removeModelDataSourceStructure(model.id)
-    }
-  }, [
-    editor,
-    props.dataSources,
-    dataSourceId,
-    setModelDataSource,
-    removeModelDataSourceStructure,
-  ])
-
-  useEffect(() => {
-    reLayout()
-
-    if (props.isCursorWithin && !props.isCursorInserting) {
-      focusEditor()
-    }
-  }, [reLayout, aiSuggestions, props.isEditable])
+  }, [props.isCursorWithin, props.isCursorInserting, codeEditor])
 
   const [copied, setCopied] = useState(false)
   useEffect(() => {
@@ -355,11 +297,11 @@ function SQLBlock(props: Props) {
 
   const { setInteractionState } = useEditorAwareness()
   const onClickWithin = useCallback(() => {
-    setInteractionState({
-      cursorBlockId: blockId ?? null,
-      scrollIntoView: false,
+    setInteractionState((prev) => ({
+      ...prev,
       mode: 'normal',
-    })
+      cursorBlockId: blockId,
+    }))
   }, [blockId, setInteractionState])
 
   const dataSourcesOptions = useMemo(
@@ -448,6 +390,9 @@ function SQLBlock(props: Props) {
   }
 
   const headerSelectValue = isFileDataSource ? 'duckdb' : dataSourceId
+
+  // TODO:
+  const isEditorFocused = props.isCursorWithin && !props.isCursorInserting
 
   return (
     <div
@@ -565,23 +510,28 @@ function SQLBlock(props: Props) {
                 aiSuggestions === null && 'invisible h-0 overflow-hidden'
               )}
             >
-              <DiffEditor
-                key={editorKey}
-                language="sql"
-                onMount={onMountDiffEditor}
-                options={diffEditorOptions}
-              />
+              {/* TODO: */}
+              {/* <DiffEditor */}
+              {/*   key={editorKey} */}
+              {/*   language="sql" */}
+              {/*   onMount={onMountDiffEditor} */}
+              {/*   options={diffEditorOptions} */}
+              {/* /> */}
             </div>
             <div
               className={clsx(
                 aiSuggestions !== null && 'invisible h-0 overflow-hidden'
               )}
             >
-              <Editor
-                key={editorKey}
+              <CodeEditor
+                ref={codeEditor}
                 language="sql"
-                onMount={onMountEditor}
-                options={editorOptions}
+                source={source}
+                readOnly={!props.isEditable || statusIsDisabled}
+                onEditWithAI={onToggleEditWithAIPromptOpen}
+                onRun={onRun}
+                onSelectNext={props.selectBelow}
+                onInsertBlock={props.insertBelow}
               />
             </div>
           </div>

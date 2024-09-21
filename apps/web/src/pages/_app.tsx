@@ -19,9 +19,6 @@ import useProperties from '@/hooks/useProperties'
 import Telemetry from '@/components/Telemetry'
 import { DataSourcesProvider } from '@/hooks/useDatasources'
 import { ReusableComponentsProvider } from '@/hooks/useReusableComponents'
-const MonacoProvider = dynamic(() => import('@/components/MonacoProvider'), {
-  ssr: false,
-})
 
 type Page<P = {}> = NextPage<P> & {
   layout?: ComponentType
@@ -49,9 +46,7 @@ function App({ Component, pageProps: { session, ...pageProps } }: Props) {
                 <ReusableComponentsProvider>
                   <SideBarProvider>
                     <Layout>
-                      <MonacoProvider>
-                        <Component {...pageProps} />
-                      </MonacoProvider>
+                      <Component {...pageProps} />
                     </Layout>
                   </SideBarProvider>
                 </ReusableComponentsProvider>

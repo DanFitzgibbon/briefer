@@ -19,7 +19,6 @@ import {
   requestPythonFixWithAI,
   requestPythonEditWithAI,
   closePythonEditWithAIPrompt,
-  getPythonSource,
   isFixingPythonWithAI,
   togglePythonEditWithAIPromptOpen,
   getBaseAttributes,
@@ -31,8 +30,6 @@ import clsx from 'clsx'
 import type { ApiDocument, ApiWorkspace } from '@briefer/database'
 import { useEnvironmentStatus } from '@/hooks/useEnvironmentStatus'
 import { useCallback, useEffect, useMemo } from 'react'
-import useCodeEditor from '@/hooks/useV2CodeEditor'
-import { DiffEditor, Editor } from '@monaco-editor/react'
 import {
   ExecutingPythonText,
   LoadingEnvText,
@@ -42,7 +39,6 @@ import { ConnectDragPreview } from 'react-dnd'
 import ApproveDiffButons from '../../ApproveDiffButtons'
 import EditWithAIForm from '../../EditWithAIForm'
 import { PythonExecTooltip } from '../../ExecTooltip'
-import { useMonacoContext } from '@/components/MonacoProvider'
 import { PythonOutputs } from './PythonOutput'
 import ScrollBar from '@/components/ScrollBar'
 import HiddenInPublishedButton from '../../HiddenInPublishedButton'
@@ -51,6 +47,7 @@ import { useWorkspaces } from '@/hooks/useWorkspaces'
 import useProperties from '@/hooks/useProperties'
 import { SaveReusableComponentButton } from '@/components/ReusableComponents'
 import { useReusableComponents } from '@/hooks/useReusableComponents'
+import { CodeEditor } from '../../CodeEditor'
 
 interface Props {
   document: ApiDocument
@@ -143,30 +140,7 @@ function PythonBlock(props: Props) {
     [components, componentId]
   )
 
-  const {
-    editor,
-    isEditorFocused,
-    onMount: onMountEditor,
-    onMountDiffEditor,
-    editorOptions,
-    diffEditorOptions,
-    focusEditor,
-    key: editorKey,
-    reLayout,
-    acceptDiffEditor,
-  } = useCodeEditor(
-    blockId,
-    getPythonSource(props.block),
-    getPythonAISuggestions(props.block),
-    onRun,
-    statusIsDisabled,
-    !props.isEditable,
-    onToggleEditWithAIPromptOpen,
-    props.selectBelow,
-    props.insertBelow
-  )
-
-  const source = props.block.getAttribute('source')
+  const { source } = getPythonAttributes(props.block)
   const lastQuery = props.block.getAttribute('lastQuery')
   const lastQueryTime = props.block.getAttribute('lastQueryTime')
   const queryStatusText = useMemo(() => {
@@ -205,17 +179,19 @@ function PythonBlock(props: Props) {
 
   const onCloseEditWithAIPrompt = useCallback(() => {
     closePythonEditWithAIPrompt(props.block, false)
-    focusEditor()
-  }, [props.block, focusEditor])
+    // TODO:
+    // focusEditor()
+  }, [props.block])
 
   const onSubmitEditWithAI = useCallback(() => {
     requestPythonEditWithAI(props.block)
   }, [props.block])
 
   const onAcceptAISuggestion = useCallback(() => {
-    acceptDiffEditor()
+    // TODO:
+    // acceptDiffEditor()
     props.block.setAttribute('aiSuggestions', null)
-  }, [acceptDiffEditor, props.block])
+  }, [props.block])
 
   const onRejectAISuggestion = useCallback(() => {
     props.block.setAttribute('aiSuggestions', null)
@@ -230,40 +206,17 @@ function PythonBlock(props: Props) {
   }, [props.block, hasOaiKey])
 
   useEffect(() => {
-    reLayout()
-
     if (props.isCursorWithin && !props.isCursorInserting) {
-      focusEditor()
+      // TODO:
+      // focusEditor()
     }
-  }, [reLayout, aiSuggestions])
+  }, [aiSuggestions])
 
   const diffButtonsVisible =
     aiSuggestions !== null &&
     (status === 'idle' ||
       status === 'running-suggestion' ||
       status === 'try-suggestion-requested')
-
-  const [, { setModelDocumentBlock, removeModelDocumentBlock }] =
-    useMonacoContext()
-
-  useEffect(() => {
-    const model = editor?.getModel()
-    if (!model) {
-      return
-    }
-
-    setModelDocumentBlock(model.id, props.document.id, blockId)
-
-    return () => {
-      removeModelDocumentBlock(model.id)
-    }
-  }, [
-    editor,
-    props.document.id,
-    blockId,
-    setModelDocumentBlock,
-    removeModelDocumentBlock,
-  ])
 
   const onToggleIsBlockHiddenInPublished = useCallback(() => {
     props.onToggleIsBlockHiddenInPublished(blockId)
@@ -335,6 +288,9 @@ function PythonBlock(props: Props) {
     )
   }
 
+  // TODO:
+  const isEditorFocused = props.isCursorWithin && !props.isCursorInserting
+
   return (
     <div
       className="bg-white relative group/block"
@@ -395,25 +351,23 @@ function PythonBlock(props: Props) {
                 aiSuggestions === null && 'invisible h-0 overflow-hidden'
               )}
             >
-              <DiffEditor
-                key={editorKey}
-                className="ph-no-capture"
-                language="python"
-                onMount={onMountDiffEditor}
-                options={diffEditorOptions}
-              />
+              {/* TODO: */}
+              {/* <DiffEditor */}
+              {/*   key={editorKey} */}
+              {/*   language="sql" */}
+              {/*   onMount={onMountDiffEditor} */}
+              {/*   options={diffEditorOptions} */}
+              {/* /> */}
             </div>
             <div
               className={clsx(
                 aiSuggestions !== null && 'invisible h-0 overflow-hidden'
               )}
             >
-              <Editor
-                key={editorKey}
-                // className="ph-no-capture"
+              <CodeEditor
                 language="python"
-                onMount={onMountEditor}
-                options={editorOptions}
+                source={source}
+                readOnly={!props.isEditable || statusIsDisabled}
               />
             </div>
           </div>
