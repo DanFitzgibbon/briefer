@@ -1,11 +1,5 @@
 import * as Y from 'yjs'
-import {
-  forwardRef,
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useRef,
-} from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import {
   Annotation,
   ChangeSpec,
@@ -132,6 +126,7 @@ function brieferKeyMaps(cbs: {
         // shift + enter
         key: 'Shift-Enter',
         run: () => {
+          console.log('shift enter')
           cbs.onRunSelectNext()
           return true
         },
@@ -153,20 +148,16 @@ export type CodeEditor = {
 }
 
 interface Props {
+  blockId: string
   source: Y.Text
   language: 'python' | 'sql'
   readOnly: boolean
   onEditWithAI: () => void
   onRun: () => void
-  onSelectNext: () => void
   onInsertBlock: () => void
 }
-export const CodeEditor = forwardRef<CodeEditor, Props>((props, ref) => {
-  const { interactionState, setInteractionState } = useEditorAwareness()
-  const onBlur = useCallback(() => {
-    setInteractionState((prev) => ({ ...prev, mode: 'normal' }))
-  }, [])
-
+export const CodeEditor = (props: Props) => {
+  const [editorState, editorAPI] = useEditorAwareness()
   const onRunInsertBlock = useCallback(() => {
     props.onRun()
     props.onInsertBlock()
@@ -174,32 +165,11 @@ export const CodeEditor = forwardRef<CodeEditor, Props>((props, ref) => {
 
   const onRunSelectNext = useCallback(() => {
     props.onRun()
-    props.onSelectNext()
-  }, [props.onRun, props.onSelectNext])
+    editorAPI.move('below', 'insert')
+  }, [props.onRun, editorAPI.move])
 
   const editorRef = useRef<HTMLDivElement>(null)
   const editorViewRef = useRef<EditorView | null>(null)
-
-  console.log(interactionState)
-  const onClick: React.MouseEventHandler<HTMLDivElement> = useCallback(
-    (e) => {
-      e.preventDefault()
-      setInteractionState((prev) => ({ ...prev, mode: 'insert' }))
-    },
-    [setInteractionState]
-  )
-
-  useImperativeHandle(
-    ref,
-    () => ({
-      focus: () => {
-        if (editorViewRef.current) {
-          editorViewRef.current.focus()
-        }
-      },
-    }),
-    [editorViewRef]
-  )
 
   useEffect(() => {
     if (!editorRef.current) {
@@ -211,16 +181,16 @@ export const CodeEditor = forwardRef<CodeEditor, Props>((props, ref) => {
     const editorView = new EditorView({
       state: EditorState.create({
         extensions: [
-          ...getExtensions(props.language),
-          EditorState.readOnly.of(props.readOnly),
-          yTextSync,
           brieferKeyMaps({
-            onBlur,
+            onBlur: editorAPI.blur,
             onEditWithAI: props.onEditWithAI,
             onRun: props.onRun,
             onRunSelectNext,
             onRunInsertBlock,
           }),
+          ...getExtensions(props.language),
+          EditorState.readOnly.of(props.readOnly),
+          yTextSync,
         ],
         doc: props.source.toString(),
       }),
@@ -231,17 +201,7 @@ export const CodeEditor = forwardRef<CodeEditor, Props>((props, ref) => {
     return () => {
       editorView.destroy()
     }
-  }, [
-    props.source,
-    props.language,
-    props.readOnly,
-    editorRef,
-    onBlur,
-    props.onEditWithAI,
-    props.onRun,
-    onRunSelectNext,
-    onRunInsertBlock,
-  ])
+  }, [props.blockId])
 
   useEffect(() => {
     if (!editorViewRef.current) {
@@ -298,5 +258,21 @@ export const CodeEditor = forwardRef<CodeEditor, Props>((props, ref) => {
     }
   }, [editorViewRef, props.source])
 
-  return <div ref={editorRef} onClick={onClick}></div>
-})
+  useEffect(() => {
+    if (
+      editorState.cursorBlockId === props.blockId &&
+      editorState.mode === 'insert' &&
+      editorViewRef.current &&
+      !editorViewRef.current.hasFocus
+    ) {
+      editorViewRef.current.focus()
+    }
+  }, [editorState, props.blockId, editorViewRef])
+
+  const preventDefault = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    editorAPI.insert(props.blockId, { scrollIntoView: false })
+  }, [])
+
+  return <div onClick={preventDefault} ref={editorRef}></div>
+}

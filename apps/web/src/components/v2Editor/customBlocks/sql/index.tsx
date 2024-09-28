@@ -9,7 +9,7 @@ import {
   BookOpenIcon,
 } from '@heroicons/react/20/solid'
 import { CopyToClipboard } from 'react-copy-to-clipboard'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import * as Y from 'yjs'
 import {
   type SQLBlock,
@@ -81,9 +81,6 @@ interface Props {
   isBlockHiddenInPublished: boolean
   onToggleIsBlockHiddenInPublished: (blockId: string) => void
   onSchemaExplorer: (dataSourceId: string | null) => void
-  isCursorWithin: boolean
-  isCursorInserting: boolean
-  selectBelow: () => void
   insertBelow: () => void
 }
 
@@ -167,12 +164,12 @@ function SQLBlock(props: Props) {
     [components, componentId]
   )
 
-  const codeEditor = useRef<CodeEditor | null>(null)
+  const [editorState, editorAPI] = useEditorAwareness()
 
   const onCloseEditWithAIPrompt = useCallback(() => {
     closeSQLEditWithAIPrompt(props.block, false)
-    codeEditor.current?.focus()
-  }, [props.block, codeEditor])
+    editorAPI.insert(blockId, { scrollIntoView: false })
+  }, [props.block, editorAPI.insert])
 
   const onChangeDataSource = useCallback(
     (df: { value: string; type: DataSourceType | 'duckdb' }) => {
@@ -259,12 +256,6 @@ function SQLBlock(props: Props) {
 
   const isAIEditing = isSQLBlockAIEditing(props.block)
 
-  useEffect(() => {
-    if (props.isCursorWithin && props.isCursorInserting) {
-      codeEditor.current?.focus()
-    }
-  }, [props.isCursorWithin, props.isCursorInserting, codeEditor])
-
   const [copied, setCopied] = useState(false)
   useEffect(() => {
     if (copied) {
@@ -295,14 +286,9 @@ function SQLBlock(props: Props) {
     props.onSchemaExplorer(dataSourceId)
   }, [props.onSchemaExplorer, dataSourceId])
 
-  const { setInteractionState } = useEditorAwareness()
   const onClickWithin = useCallback(() => {
-    setInteractionState((prev) => ({
-      ...prev,
-      mode: 'normal',
-      cursorBlockId: blockId,
-    }))
-  }, [blockId, setInteractionState])
+    editorAPI.focus(blockId, { scrollIntoView: false })
+  }, [blockId, editorAPI.focus])
 
   const dataSourcesOptions = useMemo(
     () =>
@@ -391,8 +377,7 @@ function SQLBlock(props: Props) {
 
   const headerSelectValue = isFileDataSource ? 'duckdb' : dataSourceId
 
-  // TODO:
-  const isEditorFocused = props.isCursorWithin && !props.isCursorInserting
+  const isEditorFocused = editorState.cursorBlockId === blockId
 
   return (
     <div
@@ -406,10 +391,11 @@ function SQLBlock(props: Props) {
           props.isBlockHiddenInPublished && 'border-dashed',
           props.hasMultipleTabs ? 'rounded-tl-none' : 'rounded-tl-md',
           {
-            'border-ceramic-400 shadow-sm': isEditorFocused && props.isEditable,
+            'border-ceramic-400 shadow-sm':
+              isEditorFocused && editorState.mode === 'insert',
             'border-blue-400 shadow-sm':
-              props.isCursorWithin && !props.isCursorInserting,
-            'border-gray-200': !isEditorFocused && !props.isCursorWithin,
+              isEditorFocused && editorState.mode === 'normal',
+            'border-gray-200': !isEditorFocused,
           }
         )}
       >
@@ -524,14 +510,13 @@ function SQLBlock(props: Props) {
               )}
             >
               <CodeEditor
-                ref={codeEditor}
                 language="sql"
                 source={source}
                 readOnly={!props.isEditable || statusIsDisabled}
                 onEditWithAI={onToggleEditWithAIPromptOpen}
                 onRun={onRun}
-                onSelectNext={props.selectBelow}
                 onInsertBlock={props.insertBelow}
+                blockId={blockId}
               />
             </div>
           </div>

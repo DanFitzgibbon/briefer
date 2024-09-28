@@ -29,7 +29,7 @@ import {
 import clsx from 'clsx'
 import type { ApiDocument, ApiWorkspace } from '@briefer/database'
 import { useEnvironmentStatus } from '@/hooks/useEnvironmentStatus'
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import {
   ExecutingPythonText,
   LoadingEnvText,
@@ -63,9 +63,6 @@ interface Props {
   hasMultipleTabs: boolean
   isBlockHiddenInPublished: boolean
   onToggleIsBlockHiddenInPublished: (blockId: string) => void
-  isCursorWithin: boolean
-  isCursorInserting: boolean
-  selectBelow?: () => void
   insertBelow?: () => void
 }
 function PythonBlock(props: Props) {
@@ -177,11 +174,12 @@ function PythonBlock(props: Props) {
   const editWithAIPrompt = getPythonBlockEditWithAIPrompt(props.block)
   const isAIEditing = isPythonBlockAIEditing(props.block)
 
+  const [editorState, editorAPI] = useEditorAwareness()
+
   const onCloseEditWithAIPrompt = useCallback(() => {
     closePythonEditWithAIPrompt(props.block, false)
-    // TODO:
-    // focusEditor()
-  }, [props.block])
+    editorAPI.insert(blockId, { scrollIntoView: false })
+  }, [props.block, editorAPI.insert])
 
   const onSubmitEditWithAI = useCallback(() => {
     requestPythonEditWithAI(props.block)
@@ -205,13 +203,6 @@ function PythonBlock(props: Props) {
     requestPythonFixWithAI(props.block)
   }, [props.block, hasOaiKey])
 
-  useEffect(() => {
-    if (props.isCursorWithin && !props.isCursorInserting) {
-      // TODO:
-      // focusEditor()
-    }
-  }, [aiSuggestions])
-
   const diffButtonsVisible =
     aiSuggestions !== null &&
     (status === 'idle' ||
@@ -222,14 +213,9 @@ function PythonBlock(props: Props) {
     props.onToggleIsBlockHiddenInPublished(blockId)
   }, [props.onToggleIsBlockHiddenInPublished, blockId])
 
-  const { setInteractionState } = useEditorAwareness()
   const onClickWithin = useCallback(() => {
-    setInteractionState({
-      cursorBlockId: blockId ?? null,
-      scrollIntoView: false,
-      mode: 'normal',
-    })
-  }, [blockId, setInteractionState])
+    editorAPI.focus(blockId, { scrollIntoView: false })
+  }, [blockId, editorAPI.focus])
 
   const isComponentInstance =
     component !== undefined && component.blockId !== blockId
@@ -288,8 +274,7 @@ function PythonBlock(props: Props) {
     )
   }
 
-  // TODO:
-  const isEditorFocused = props.isCursorWithin && !props.isCursorInserting
+  const isEditorFocused = editorState.cursorBlockId === blockId
 
   return (
     <div
@@ -303,10 +288,11 @@ function PythonBlock(props: Props) {
           props.isBlockHiddenInPublished && 'border-dashed',
           props.hasMultipleTabs ? 'rounded-tl-none' : 'rounded-tl-md',
           {
-            'border-ceramic-400 shadow-sm': isEditorFocused && props.isEditable,
+            'border-ceramic-400 shadow-sm':
+              isEditorFocused && editorState.mode === 'insert',
             'border-blue-400 shadow-sm':
-              props.isCursorWithin && !props.isCursorInserting,
-            'border-gray-200': !isEditorFocused && !props.isCursorWithin,
+              isEditorFocused && editorState.mode === 'normal',
+            'border-gray-200': !isEditorFocused,
           }
         )}
       >
@@ -365,9 +351,13 @@ function PythonBlock(props: Props) {
               )}
             >
               <CodeEditor
-                language="python"
+                blockId={blockId}
                 source={source}
+                language="python"
                 readOnly={!props.isEditable || statusIsDisabled}
+                onEditWithAI={onToggleEditWithAIPromptOpen}
+                onRun={onRun}
+                onInsertBlock={props.insertBelow ?? (() => {})}
               />
             </div>
           </div>

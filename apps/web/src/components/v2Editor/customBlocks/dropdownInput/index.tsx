@@ -73,8 +73,8 @@ interface Props {
   isCursorInserting: boolean
 }
 function DropdownInputBlock(props: Props) {
-  const blockId = props.block.getAttribute('id')
   const attrs = getDropdownInputAttributes(props.block, props.blocks)
+  const blockId = attrs.id
 
   const onChangeLabel = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -145,22 +145,10 @@ function DropdownInputBlock(props: Props) {
     }
   }, [props.isCursorWithin, props.isCursorInserting])
 
-  const { setInteractionState } = useEditorAwareness()
+  const [, editorAPI] = useEditorAwareness()
   const onFocus = useCallback(() => {
-    setInteractionState({
-      mode: 'insert',
-      cursorBlockId: blockId ?? '',
-      scrollIntoView: false,
-    })
-  }, [blockId, setInteractionState])
-
-  const onBlur = useCallback(() => {
-    setInteractionState((prev) => ({
-      ...prev,
-      mode: 'normal',
-      scrollIntoView: false,
-    }))
-  }, [setInteractionState])
+    editorAPI.insert(blockId, { scrollIntoView: false })
+  }, [blockId, editorAPI.insert])
 
   const unfocusOnEscape = useCallback(
     (e: React.KeyboardEvent<HTMLSelectElement>) => {
@@ -267,7 +255,7 @@ function DropdownInputBlock(props: Props) {
             <select
               ref={selectRef}
               onFocus={onFocus}
-              onBlur={onBlur}
+              onBlur={editorAPI.blur}
               onKeyDown={unfocusOnEscape}
               className={clsx(
                 'block rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-inset w-full disabled:bg-gray-100 disabled:cursor-not-allowed bg-white',
